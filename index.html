@@ -16,6 +16,8 @@
     <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
     <!-- Crypto.js for password hashing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <!-- Add this in the head section, before your other scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
@@ -866,19 +868,33 @@
             
             // Set up auth event listeners
             loginTab.addEventListener('click', () => {
+                // Clear any existing errors
+                loginError.classList.add('hidden');
+                registerError.classList.add('hidden');
+                
+                // Switch tabs
                 loginTab.classList.add('border-b-2', 'border-green-500', 'text-green-600', 'dark:text-green-400');
                 loginTab.classList.remove('text-gray-500', 'dark:text-gray-400');
                 registerTab.classList.remove('border-b-2', 'border-green-500', 'text-green-600', 'dark:text-green-400');
                 registerTab.classList.add('text-gray-500', 'dark:text-gray-400');
+                
+                // Switch forms
                 loginForm.classList.remove('hidden');
                 registerForm.classList.add('hidden');
             });
             
             registerTab.addEventListener('click', () => {
+                // Clear any existing errors
+                loginError.classList.add('hidden');
+                registerError.classList.add('hidden');
+                
+                // Switch tabs
                 registerTab.classList.add('border-b-2', 'border-green-500', 'text-green-600', 'dark:text-green-400');
                 registerTab.classList.remove('text-gray-500', 'dark:text-gray-400');
                 loginTab.classList.remove('border-b-2', 'border-green-500', 'text-green-600', 'dark:text-green-400');
                 loginTab.classList.add('text-gray-500', 'dark:text-gray-400');
+                
+                // Switch forms
                 registerForm.classList.remove('hidden');
                 loginForm.classList.add('hidden');
             });
@@ -930,80 +946,133 @@
         async function handleLogin(e) {
             e.preventDefault();
             
-            const email = document.getElementById('login-email').value;
+            const email = document.getElementById('login-email').value.trim();
             const password = document.getElementById('login-password').value;
             
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email: email,
-                password: password,
-            });
+            // Clear previous errors
+            loginError.classList.add('hidden');
             
-            if (error) {
-                loginError.textContent = error.message;
+            // Validate inputs
+            if (!email || !password) {
+                loginError.textContent = 'Email and password are required';
                 loginError.classList.remove('hidden');
                 return;
             }
             
-            // Get user profile from users table
-            const { data: userProfile } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', data.user.id)
-                .single();
+            // Show loading state
+            const submitBtn = loginForm.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<span class="material-icons animate-spin">refresh</span> Signing in...';
+            submitBtn.disabled = true;
             
-            // Login the user
-            await loginUser(userProfile);
+            try {
+                // Sign in with Supabase
+                const { data: { user }, error: authError } = await supabase.auth.signInWithPassword({
+                    email,
+                    password
+                });
+
+                if (authError) throw authError;
+
+                // Get user profile
+                const { data: profile, error: profileError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profileError) throw profileError;
+
+                // Clear form and error
+                loginForm.reset();
+                loginError.classList.add('hidden');
+
+                // Login successful
+                await loginUser(profile);
+
+            } catch (error) {
+                console.error('Login error:', error);
+                loginError.textContent = error.message || 'Invalid email or password';
+                loginError.classList.remove('hidden');
+            } finally {
+                submitBtn.innerHTML = originalBtnText;
+                submitBtn.disabled = false;
+            }
         }
         
         // Handle register form submission
         async function handleRegister(e) {
             e.preventDefault();
             
-            const name = document.getElementById('register-name').value;
-            const email = document.getElementById('register-email').value;
+            const name = document.getElementById('register-name').value.trim();
+            const email = document.getElementById('register-email').value.trim();
             const password = document.getElementById('register-password').value;
             const confirmPassword = document.getElementById('register-confirm-password').value;
             
-            // Check if passwords match
+            // Clear previous errors
+            registerError.classList.add('hidden');
+            
+            // Validate inputs
+            if (!name || !email || !password || !confirmPassword) {
+                registerError.textContent = 'All fields are required';
+                registerError.classList.remove('hidden');
+                return;
+            }
+            
             if (password !== confirmPassword) {
                 registerError.textContent = 'Passwords do not match';
                 registerError.classList.remove('hidden');
                 return;
             }
             
-            // Register with Supabase Auth
-            const { data, error } = await supabase.auth.signUp({
-                email: email,
-                password: password,
-            });
+            // Show loading state
+            const submitBtn = registerForm.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<span class="material-icons animate-spin">refresh</span> Creating account...';
+            submitBtn.disabled = true;
             
-            if (error) {
-                registerError.textContent = error.message;
-                registerError.classList.remove('hidden');
-                return;
+            try {
+                // Sign up with Supabase
+                const { data: authData, error: authError } = await supabase.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        data: { full_name: name }
+                    }
+                });
+
+                if (authError) throw authError;
+
+                // Create profile in users table
+                const { error: profileError } = await supabase
+                    .from('users')
+                    .insert([{
+                        id: authData.user.id,
+                        email: email,
+                        name: name,
+                        created_at: new Date().toISOString()
+                    }]);
+
+                if (profileError) throw profileError;
+
+                // Show success
+                registerError.textContent = 'Account created successfully! Please log in.';
+                registerError.classList.remove('hidden', 'text-red-500');
+                registerError.classList.add('text-green-500');
+                registerForm.reset();
+
+                // Switch to login tab after delay
+                setTimeout(() => loginTab.click(), 1500);
+
+            } catch (error) {
+                console.error('Registration error:', error);
+                registerError.textContent = error.message || 'Failed to create account';
+                registerError.classList.remove('hidden', 'text-green-500');
+                registerError.classList.add('text-red-500');
+            } finally {
+                submitBtn.innerHTML = originalBtnText;
+                submitBtn.disabled = false;
             }
-            
-            // Create user profile in users table
-            const { error: profileError } = await supabase
-                .from('users')
-                .insert([
-                    { id: data.user.id, email: email, name: name }
-                ]);
-            
-            if (profileError) {
-                registerError.textContent = profileError.message;
-                registerError.classList.remove('hidden');
-                return;
-            }
-            
-            // Clear form and show success
-            registerForm.reset();
-            registerError.textContent = 'Account created successfully! Please log in.';
-            registerError.classList.remove('hidden');
-            registerError.classList.add('text-green-500');
-            
-            // Switch to login tab
-            loginTab.click();
         }
         
         // Login user and load their data
@@ -1015,11 +1084,16 @@
             authContent.style.display = 'none';
             mainContent.style.display = 'block';
             
-            // Load user data
-            await loadUserData();
-            
-            // Set up main app event listeners
-            setupMainAppEventListeners();
+            try {
+                // Load user data
+                await loadUserData();
+                
+                // Set up main app event listeners
+                setupMainAppEventListeners();
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                showNotification('Error loading data. Please refresh the page.', 'error');
+            }
         }
         
         // Load user data from storage
@@ -3315,10 +3389,55 @@
         }
         
         // Initialize the app when the page loads
-        window.addEventListener('DOMContentLoaded', () => {
-            initApp();
-            setupCollapsibleSections();
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Check for existing session
+                const { data: { session }, error } = await supabase.auth.getSession();
+                
+                if (error) throw error;
+                
+                if (session) {
+                    // Get user profile
+                    const { data: profile, error: profileError } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('id', session.user.id)
+                        .single();
+                    
+                    if (profileError) throw profileError;
+                    
+                    // Auto-login
+                    await loginUser(profile);
+                }
+            } catch (error) {
+                console.error('Session check error:', error);
+                // Show auth screen
+                authContent.style.display = 'block';
+                mainContent.style.display = 'none';
+            }
         });
+
+        const supabase = supabase.createClient(
+            'your-project-url.supabase.co',
+            'your-anon-key'
+        );
+
+        // Add error notification function
+        function showNotification(message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `fixed bottom-4 right-4 px-4 py-2 rounded shadow-lg ${
+                type === 'success' ? 'bg-green-500' : 'bg-red-500'
+            } text-white`;
+            notification.innerHTML = `<div class="flex items-center"><span class="material-icons mr-2">${
+                type === 'success' ? 'check_circle' : 'error'
+            }</span>${message}</div>`;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.remove();
+            }, 3000);
+        }
     </script>
 </body>
 </html>
