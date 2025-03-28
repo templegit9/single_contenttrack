@@ -1,0 +1,27 @@
+{
+  "name": "platform-engagement-tracker",
+  "version": "1.0.0",
+  "description": "Application to track engagement metrics across content platforms",
+  "main": "index.html",
+  "scripts": {
+    "start": "http-server -p 3000",
+    "dev": "http-server -p 3000 -c-1",
+    "test": "cypress run",
+    "test:open": "cypress open",
+    "lint": "eslint *.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chart.js": "^3.9.1",
+    "crypto-js": "^4.1.1",
+    "localforage": "^1.10.0",
+    "tailwindcss": "^3.3.2"
+  },
+  "devDependencies": {
+    "cypress": "^12.14.0",
+    "eslint": "^8.41.0",
+    "eslint-plugin-cypress": "^2.13.3",
+    "http-server": "^14.1.1"
+  }
+} 
